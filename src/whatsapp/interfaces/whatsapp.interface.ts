@@ -31,6 +31,7 @@ export interface WhatsAppContact {
     name: string;
   };
   wa_id: string;
+  identity_key_hash?: string; // Solo si la verificación de cambio de identidad está habilitada
 }
 
 export interface WhatsAppIncomingMessage {
@@ -45,7 +46,13 @@ export interface WhatsAppIncomingMessage {
     | 'document'
     | 'location'
     | 'contacts'
-    | 'interactive';
+    | 'interactive'
+    | 'button'
+    | 'sticker'
+    | 'reaction'
+    | 'order'
+    | 'system'
+    | 'unsupported';
   text?: {
     body: string;
   };
@@ -92,6 +99,41 @@ export interface WhatsAppIncomingMessage {
       description?: string;
     };
   };
+  // Context - Solo presente si el mensaje se originó desde un botón "Message business"
+  // o si es una respuesta/reenvío
+  context?: {
+    from: string;
+    id: string;
+    referred_product?: {
+      catalog_id: string;
+      product_retailer_id: string;
+    };
+  };
+  // Referral - Solo presente si el mensaje proviene de un anuncio de clic a WhatsApp
+  referral?: {
+    source_url: string;
+    source_id: string;
+    source_type: 'ad' | 'post';
+    headline: string;
+    body: string;
+    media_type: 'image' | 'video';
+    image_url?: string;
+    video_url?: string;
+    thumbnail_url?: string;
+    ctwa_clid?: string; // Se omite para anuncios en el estado de WhatsApp
+    welcome_message?: {
+      text: string;
+    };
+  };
+  // Errors - Solo presente en mensajes de tipo "unsupported"
+  errors?: Array<{
+    code: number;
+    title: string;
+    message?: string;
+    error_data?: {
+      details: string;
+    };
+  }>;
 }
 
 export interface WhatsAppStatus {

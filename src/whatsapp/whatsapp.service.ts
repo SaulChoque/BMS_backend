@@ -55,6 +55,9 @@ export class WhatsappService {
    */
   async processIncomingMessage(body: WhatsAppMessage): Promise<void> {
     try {
+      // Log del payload completo para debugging
+      this.logger.debug('Payload recibido:', JSON.stringify(body, null, 2));
+
       // Verificar que el objeto sea de WhatsApp
       if (body.object !== 'whatsapp_business_account') {
         this.logger.warn('Objeto no es de WhatsApp Business Account');
@@ -85,6 +88,8 @@ export class WhatsappService {
       const safeError = error as Error & { response?: { data?: unknown } };
       const details = safeError.response?.data ?? safeError.message;
       this.logger.error('Error procesando mensaje entrante:', details);
+      this.logger.error('Stack trace:', safeError.stack);
+      this.logger.error('Payload completo:', JSON.stringify(body, null, 2));
       throw safeError;
     }
   }
@@ -95,6 +100,29 @@ export class WhatsappService {
   private async handleMessage(message: WhatsAppIncomingMessage): Promise<void> {
     this.logger.log(`Mensaje recibido de: ${message.from}`);
     this.logger.log(`Tipo de mensaje: ${message.type}`);
+
+    // Log de información adicional si está disponible
+    if (message.context) {
+      this.logger.log(
+        `Mensaje con contexto - Origen: ${message.context.from}, ID: ${message.context.id}`,
+      );
+      if (message.context.referred_product) {
+        this.logger.log(
+          `Producto referenciado - Catálogo: ${message.context.referred_product.catalog_id}, Producto: ${message.context.referred_product.product_retailer_id}`,
+        );
+      }
+    }
+
+    if (message.referral) {
+      this.logger.log(
+        `Mensaje desde anuncio - Tipo: ${message.referral.source_type}, URL: ${message.referral.source_url}`,
+      );
+      this.logger.log(`Headline: ${message.referral.headline}`);
+      this.logger.log(`Body: ${message.referral.body}`);
+      if (message.referral.ctwa_clid) {
+        this.logger.log(`CTWA Click ID: ${message.referral.ctwa_clid}`);
+      }
+    }
 
     // Marcar el mensaje como leído
     await this.markAsRead(message.id);
@@ -110,26 +138,64 @@ export class WhatsappService {
 
       case 'image':
         this.logger.log('Imagen recibida:', message.image);
+        await this.handleMediaMessage(message, 'image');
         break;
 
       case 'video':
         this.logger.log('Video recibido:', message.video);
+        await this.handleMediaMessage(message, 'video');
         break;
 
       case 'audio':
         this.logger.log('Audio recibido:', message.audio);
+        await this.handleMediaMessage(message, 'audio');
         break;
 
       case 'document':
         this.logger.log('Documento recibido:', message.document);
+        await this.handleMediaMessage(message, 'document');
         break;
 
       case 'location':
         this.logger.log('Ubicación recibida:', message.location);
+        await this.handleLocationMessage(message);
         break;
 
       case 'interactive':
         this.logger.log('Interacción recibida:', message.interactive);
+        await this.handleInteractiveMessage(message);
+        break;
+
+      case 'button':
+        this.logger.log('Botón presionado');
+        await this.handleButtonMessage(message);
+        break;
+
+      case 'reaction':
+        this.logger.log('Reacción recibida');
+        break;
+
+      case 'sticker':
+        this.logger.log('Sticker recibido');
+        break;
+
+      case 'order':
+        this.logger.log('Orden recibida');
+        break;
+
+      case 'system':
+        this.logger.log('Mensaje de sistema recibido');
+        break;
+
+      case 'unsupported':
+        this.logger.warn('Tipo de mensaje no soportado');
+        if (message.errors && message.errors.length > 0) {
+          message.errors.forEach((error) => {
+            this.logger.error(
+              `Error ${error.code}: ${error.title} - ${error.message || 'Sin detalles'}`,
+            );
+          });
+        }
         break;
 
       default:
@@ -146,6 +212,24 @@ export class WhatsappService {
     if (!message.text) return;
 
     const messageText = message.text.body.toLowerCase();
+
+    // Verificar si el mensaje viene de un anuncio
+    if (message.referral) {
+      await this.sendTextMessage(
+        message.from,
+        `¡Hola! Gracias por contactarnos desde nuestro anuncio "${message.referral.headline}". ¿En qué podemos ayudarte?`,
+      );
+      return;
+    }
+
+    // Verificar si el mensaje viene de un producto
+    if (message.context?.referred_product) {
+      await this.sendTextMessage(
+        message.from,
+        `Gracias por tu interés en nuestro producto. Un agente te ayudará con tu consulta sobre el artículo ${message.context.referred_product.product_retailer_id}.`,
+      );
+      return;
+    }
 
     // Ejemplo de respuesta automática
     if (messageText.includes('hola') || messageText.includes('hi')) {
@@ -165,6 +249,95 @@ export class WhatsappService {
         'Gracias por tu mensaje. Un agente te responderá pronto.',
       );
     }
+  }
+
+  /**
+   * Maneja mensajes con medios (imagen, video, audio, documento)
+   */
+  private async handleMediaMessage(
+    message: WhatsAppIncomingMessage,
+    mediaType: 'image' | 'video' | 'audio' | 'document',
+  ): Promise<void> {
+    const media = message[mediaType];
+    if (!media) return;
+
+    this.logger.log(
+      `${mediaType} recibido - ID: ${media.id}, MIME: ${media.mime_type}`,
+    );
+
+    // Aquí puedes implementar lógica para descargar y procesar el medio
+    // Por ejemplo: const mediaBuffer = await this.downloadMedia(media.id);
+
+    await this.sendTextMessage(
+      message.from,
+      `Hemos recibido tu ${mediaType === 'image' ? 'imagen' : mediaType === 'video' ? 'video' : mediaType === 'audio' ? 'audio' : 'documento'}. Gracias por compartirlo.`,
+    );
+  }
+
+  /**
+   * Maneja mensajes de ubicación
+   */
+  private async handleLocationMessage(
+    message: WhatsAppIncomingMessage,
+  ): Promise<void> {
+    if (!message.location) return;
+
+    this.logger.log(
+      `Ubicación recibida - Lat: ${message.location.latitude}, Lng: ${message.location.longitude}`,
+    );
+
+    if (message.location.name) {
+      this.logger.log(`Nombre del lugar: ${message.location.name}`);
+    }
+
+    await this.sendTextMessage(
+      message.from,
+      'Hemos recibido tu ubicación. Un agente la revisará pronto.',
+    );
+  }
+
+  /**
+   * Maneja mensajes interactivos (botones, listas)
+   */
+  private async handleInteractiveMessage(
+    message: WhatsAppIncomingMessage,
+  ): Promise<void> {
+    if (!message.interactive) return;
+
+    if (message.interactive.button_reply) {
+      this.logger.log(
+        `Botón seleccionado - ID: ${message.interactive.button_reply.id}, Título: ${message.interactive.button_reply.title}`,
+      );
+
+      await this.sendTextMessage(
+        message.from,
+        `Has seleccionado: ${message.interactive.button_reply.title}`,
+      );
+    } else if (message.interactive.list_reply) {
+      this.logger.log(
+        `Opción de lista seleccionada - ID: ${message.interactive.list_reply.id}, Título: ${message.interactive.list_reply.title}`,
+      );
+
+      await this.sendTextMessage(
+        message.from,
+        `Has seleccionado: ${message.interactive.list_reply.title}`,
+      );
+    }
+  }
+
+  /**
+   * Maneja mensajes de botón (tipo button)
+   */
+  private async handleButtonMessage(
+    message: WhatsAppIncomingMessage,
+  ): Promise<void> {
+    this.logger.log('Botón presionado en el mensaje');
+    // La lógica específica depende del tipo de botón
+    // Este caso es similar a interactive pero para el tipo 'button'
+    await this.sendTextMessage(
+      message.from,
+      'Hemos recibido tu selección. Procesando...',
+    );
   }
 
   /**

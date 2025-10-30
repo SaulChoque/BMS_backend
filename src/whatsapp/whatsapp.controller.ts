@@ -21,7 +21,6 @@ import { WhatsappService } from './whatsapp.service';
 import { SendImageMessageDto } from './dto/send-image-message.dto';
 import { SendTemplateMessageDto } from './dto/send-template-message.dto';
 import { SendTextMessageDto } from './dto/send-text-message.dto';
-import { WhatsAppWebhookDto } from './dto/whatsapp-webhook.dto';
 import type { WhatsAppMessage } from './interfaces/whatsapp.interface';
 
 @ApiTags('WhatsApp Webhook')
@@ -72,23 +71,70 @@ export class WhatsappController {
   @Post()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Recibe eventos entrantes de WhatsApp' })
-  @ApiBody({ type: WhatsAppWebhookDto })
   @ApiOkResponse({
     description: 'Evento procesado correctamente',
     schema: { example: { status: 'success' } },
   })
   async receiveWebhook(
-    @Body() body: WhatsAppWebhookDto,
+    @Body() body: Record<string, unknown>,
   ): Promise<{ status: string }> {
     this.logger.log('Webhook recibido');
+    this.logger.debug('Body completo:', JSON.stringify(body, null, 2));
 
     try {
-      await this.whatsappService.processIncomingMessage(
-        body as unknown as WhatsAppMessage,
-      );
+      // Detectar si es el formato de prueba de Meta (sin wrapper object/entry)
+      // o el formato real de producción
+      let normalizedBody: WhatsAppMessage;
+
+      if ('object' in body && 'entry' in body) {
+        // Formato real de producción
+        this.logger.log('Formato de producción detectado');
+        normalizedBody = body as unknown as WhatsAppMessage;
+      } else if ('field' in body && 'value' in body) {
+        // Formato de prueba de Meta - necesita normalización
+        this.logger.log(
+          'Formato de prueba de Meta detectado - normalizando...',
+        );
+        const testBody = body as {
+          field: string;
+          value: Record<string, unknown>;
+        };
+        const metadata = testBody.value.metadata as
+          | Record<string, unknown>
+          | undefined;
+        const phoneNumberId = metadata?.phone_number_id;
+        normalizedBody = {
+          object: 'whatsapp_business_account',
+          entry: [
+            {
+              id: typeof phoneNumberId === 'string' ? phoneNumberId : 'test_id',
+              changes: [
+                {
+                  field: testBody.field,
+                  value:
+                    testBody.value as unknown as WhatsAppMessage['entry'][0]['changes'][0]['value'],
+                },
+              ],
+            },
+          ],
+        };
+        this.logger.debug(
+          'Payload normalizado:',
+          JSON.stringify(normalizedBody, null, 2),
+        );
+      } else {
+        this.logger.error('Formato de payload no reconocido');
+        this.logger.error('Body recibido:', JSON.stringify(body, null, 2));
+        throw new BadRequestException('Formato de payload no válido');
+      }
+
+      await this.whatsappService.processIncomingMessage(normalizedBody);
       return { status: 'success' };
     } catch (error) {
-      this.logger.error('Error procesando webhook:', error);
+      const safeError = error as Error & { stack?: string };
+      this.logger.error('Error procesando webhook:', safeError.message);
+      this.logger.error('Stack trace:', safeError.stack);
+      this.logger.error('Body recibido:', JSON.stringify(body, null, 2));
       // Respondemos con éxito aunque haya errores para no perder mensajes
       return { status: 'error' };
     }

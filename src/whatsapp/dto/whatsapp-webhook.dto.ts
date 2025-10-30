@@ -35,6 +35,16 @@ export class WhatsAppContactDto {
   @ApiProperty({ example: '5215551234567' })
   @IsString()
   wa_id!: string;
+
+  @ApiProperty({
+    required: false,
+    example: 'abc123hash',
+    description:
+      'Solo incluido si la verificación de cambio de identidad está habilitada',
+  })
+  @IsOptional()
+  @IsString()
+  identity_key_hash?: string;
 }
 
 export class WhatsAppTextDto {
@@ -137,6 +147,140 @@ export class WhatsAppInteractiveDto {
   list_reply?: WhatsAppListReplyDto;
 }
 
+export class WhatsAppReferredProductDto {
+  @ApiProperty({ example: '194836987003835' })
+  @IsString()
+  catalog_id!: string;
+
+  @ApiProperty({ example: 'di9ozbzfi4' })
+  @IsString()
+  product_retailer_id!: string;
+}
+
+export class WhatsAppContextDto {
+  @ApiProperty({
+    example: '15550783881',
+    description: 'Número de teléfono del negocio desde donde se originó',
+  })
+  @IsString()
+  from!: string;
+
+  @ApiProperty({
+    example: 'wamid.HBgLMTY1MDM4Nzk0MzkVAgARGA9wcm9kdWN0X2lucXVpcnkA',
+  })
+  @IsString()
+  id!: string;
+
+  @ApiProperty({
+    required: false,
+    type: WhatsAppReferredProductDto,
+    description: 'Solo presente si el mensaje se originó desde un producto',
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => WhatsAppReferredProductDto)
+  referred_product?: WhatsAppReferredProductDto;
+}
+
+export class WhatsAppReferralWelcomeMessageDto {
+  @ApiProperty({ example: 'Hi there! Let us know how we can help!' })
+  @IsString()
+  text!: string;
+}
+
+export class WhatsAppReferralDto {
+  @ApiProperty({ example: 'https://fb.me/3cr4Wqqkv' })
+  @IsString()
+  source_url!: string;
+
+  @ApiProperty({ example: '120226305854810726' })
+  @IsString()
+  source_id!: string;
+
+  @ApiProperty({ example: 'ad', enum: ['ad', 'post'] })
+  @IsString()
+  @IsIn(['ad', 'post'])
+  source_type!: string;
+
+  @ApiProperty({ example: 'Summer Succulents are here!' })
+  @IsString()
+  body!: string;
+
+  @ApiProperty({ example: 'Chat with us' })
+  @IsString()
+  headline!: string;
+
+  @ApiProperty({ example: 'image', enum: ['image', 'video'] })
+  @IsString()
+  @IsIn(['image', 'video'])
+  media_type!: string;
+
+  @ApiProperty({
+    required: false,
+    example: 'https://scontent.xx.fbcdn.net/v/t45.1...',
+  })
+  @IsOptional()
+  @IsString()
+  image_url?: string;
+
+  @ApiProperty({ required: false, example: 'https://video.example.com/...' })
+  @IsOptional()
+  @IsString()
+  video_url?: string;
+
+  @ApiProperty({
+    required: false,
+    example: 'https://thumbnail.example.com/...',
+  })
+  @IsOptional()
+  @IsString()
+  thumbnail_url?: string;
+
+  @ApiProperty({
+    required: false,
+    example:
+      'Aff-n8ZTODiE79d22KtAwQKj9e_mIEOOj27vDVwFjN80dp4_0NiNhEgpGo0AHemvuSoifXaytfTzcchptiErTKCqTrJ5nW1h7IHYeYymGb5K5J5iTROpBhWAGaIAeUzHL50',
+    description:
+      'Se omite para anuncios en el estado de WhatsApp. Click-to-WhatsApp Ad ID',
+  })
+  @IsOptional()
+  @IsString()
+  ctwa_clid?: string;
+
+  @ApiProperty({ required: false, type: WhatsAppReferralWelcomeMessageDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => WhatsAppReferralWelcomeMessageDto)
+  welcome_message?: WhatsAppReferralWelcomeMessageDto;
+}
+
+export class WhatsAppErrorDataDto {
+  @ApiProperty({ example: 'Message type is not currently supported' })
+  @IsString()
+  details!: string;
+}
+
+export class WhatsAppMessageErrorDto {
+  @ApiProperty({ example: 131051 })
+  @IsNumber()
+  code!: number;
+
+  @ApiProperty({ example: 'Unsupported message type' })
+  @IsString()
+  title!: string;
+
+  @ApiProperty({ required: false, example: 'Message type is not supported' })
+  @IsOptional()
+  @IsString()
+  message?: string;
+
+  @ApiProperty({ required: false, type: WhatsAppErrorDataDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => WhatsAppErrorDataDto)
+  error_data?: WhatsAppErrorDataDto;
+}
+
 export class WhatsAppIncomingMessageDto {
   @ApiProperty({ example: '5215551234567' })
   @IsString()
@@ -161,6 +305,12 @@ export class WhatsAppIncomingMessageDto {
       'location',
       'contacts',
       'interactive',
+      'button',
+      'sticker',
+      'reaction',
+      'order',
+      'system',
+      'unsupported',
     ],
   })
   @IsString()
@@ -173,6 +323,12 @@ export class WhatsAppIncomingMessageDto {
     'location',
     'contacts',
     'interactive',
+    'button',
+    'sticker',
+    'reaction',
+    'order',
+    'system',
+    'unsupported',
   ])
   type!: string;
 
@@ -217,6 +373,39 @@ export class WhatsAppIncomingMessageDto {
   @ValidateNested()
   @Type(() => WhatsAppInteractiveDto)
   interactive?: WhatsAppInteractiveDto;
+
+  @ApiProperty({
+    required: false,
+    type: WhatsAppContextDto,
+    description:
+      'Solo presente si el mensaje se originó desde un botón "Message business" o si es una respuesta/reenvío',
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => WhatsAppContextDto)
+  context?: WhatsAppContextDto;
+
+  @ApiProperty({
+    required: false,
+    type: WhatsAppReferralDto,
+    description:
+      'Solo presente si el mensaje proviene de un anuncio de clic a WhatsApp',
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => WhatsAppReferralDto)
+  referral?: WhatsAppReferralDto;
+
+  @ApiProperty({
+    required: false,
+    type: [WhatsAppMessageErrorDto],
+    description: 'Solo presente en mensajes de tipo "unsupported"',
+  })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => WhatsAppMessageErrorDto)
+  errors?: WhatsAppMessageErrorDto[];
 }
 
 export class WhatsAppStatusConversationOriginDto {
@@ -359,4 +548,10 @@ export const WhatsAppWebhookModels = [
   WhatsAppStatusConversationDto,
   WhatsAppStatusConversationOriginDto,
   WhatsAppStatusPricingDto,
+  WhatsAppContextDto,
+  WhatsAppReferredProductDto,
+  WhatsAppReferralDto,
+  WhatsAppReferralWelcomeMessageDto,
+  WhatsAppMessageErrorDto,
+  WhatsAppErrorDataDto,
 ];
